@@ -1,4 +1,4 @@
-import camera as cm
+import virtualcamera as cm
 import numpy as np
 import matplotlib.pyplot as plt
 
