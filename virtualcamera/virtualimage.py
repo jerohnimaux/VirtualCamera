@@ -1,5 +1,5 @@
 import numpy as np
-
+import time
 
 class RgbColor:
     """Color object in RGB format that can be manipulated
@@ -16,7 +16,7 @@ class RgbColor:
 
     @staticmethod
     def _uint8(v):
-        return max(0, min(255, int(v)))
+        return max(0, min(255, np.uint8(v)))
 
     def tuple(self):
         return self.r, self.g, self.b
@@ -62,28 +62,54 @@ class Colorscale:
         return self.__mul__(other)
 
 
-def create_image(x, y, projection, objects, colorscale):
-    image = np.zeros([y, x, 3], dtype=np.uint8)
-    objects = np.hstack((objects, np.ones([np.size(objects, axis=0), 1])))
-    pixels = objects.dot(projection.T)  # (A * B.T).T == B * A.T
+def ratatinator(Intrinsic, Extrinsic, Imsize, points, fast_factor=1.):
+    '''
+    take an intrinsic matrix a extrinsic matrix and create
+    :param Intrinsic:(3x3) intrinsic matrix of a camera
+    :param Extrinsic:(3X4) extrinsic matrix of a camera
+    :param points:(3xN) points array placed in colums. rows = number of points
+    :param Imsize:(tuple) imsize in pix
+    :return:
+    '''
+    t = time.time()
+    img = np.zeros((Imsize[1], Imsize[0], 3))
+    points = np.transpose(points)
+    print("ps" + str(points.shape))
 
-    # divide x, y by z
-    pixels[:, 0:2] = (pixels[:, 0:2] / pixels[:, 2].reshape(-1, 1)).astype(np.int32)
-    # remove pixels outside image frame
-    pixels = pixels[(pixels[:, 0] > -1) & (pixels[:, 0] < x) & (pixels[:, 1] > -1) & (pixels[:, 1] < y)]
+    img_size = Imsize[0]*Imsize[1]
+    random_picking = np.random.choice(points.shape[1], int(img_size * fast_factor))
+    print("rands" + str(random_picking))
+    points = points[:, random_picking]
 
-    # keep only the closest pixels for each pixel coordinate
-    dist = np.linalg.norm(pixels, axis=1)  # calculate dist to objects
-    pixels[:, 2] = dist / np.max(dist)  # range from 0 to 1 from 0 distance to farest object
-    # pixels[:, 2] = (dist - min(dist)) / (max(dist) - min(dist))   # range from 0 to 1 from closest to farest object
-    pixels = pixels[pixels[:, 2].argsort()]
-    if pixels.size != 0:
-        unique, ind = np.unique(pixels[:, 0:2], axis=0, return_index=True)
-        pixels = pixels[ind]
+    N = points.shape[1]
+    homogenous_points = np.vstack((points, np.ones((1, N))))
 
-    # generate image
-    # y-coord is inversed (by convention)
-    for pt in pixels:
-        image[y - 1 - int(pt[1]), int(pt[0]), :] = (colorscale * (1 - pt[2])).tuple()
+    cam_basis_points = np.dot(Extrinsic, homogenous_points)
+    pix_basis_points = np.dot(Intrinsic, cam_basis_points).astype(np.float32)
+    pix_basis_points[0:2, :] = (pix_basis_points[0:2, :] / pix_basis_points[2, :]).astype(np.int32)
+    print(pix_basis_points.shape)
 
-    return image
+    pix_basis_points = pix_basis_points[:, (pix_basis_points[0, :] > -1) & (pix_basis_points[0, :] < Imsize[0]) & (pix_basis_points[1, :] > -1) & (pix_basis_points[1, :] < Imsize[1])]
+
+    dist = np.sqrt(np.sum(cam_basis_points**2, axis=0))
+    #print(dist)
+    sorted_dist = np.flip(np.argsort(dist))
+
+    dist_min = min(dist)
+    dist_max = max(dist)
+    alpha = 1/(dist_max-dist_min)
+
+    elapsed1 = time.time() - t
+
+    print("elaspsed1 : " + str(elapsed1))
+
+    #-120 + (alpha * (dist[idx]-dist_min)) * 120
+    for idx in sorted_dist:
+        try:
+            img[Imsize[1]-int(pix_basis_points[1, idx]), int(pix_basis_points[0, idx]), :] = \
+                [np.uint8(255*(1-(alpha * (dist[idx]-dist_min)))), np.uint8(255*(1-(alpha * (dist[idx]-dist_min)))), np.uint8(0)]
+        except IndexError:
+            continue
+    elapsed2 = time.time() - t
+    print("elaspsed2 : " + str(elapsed2))
+    return img

@@ -35,11 +35,11 @@ class Camera:
         self.f = f  # focal length of the virtualcamera in mm
         self.theta = theta  # FOV angle
         self.res = self.Res(res_x, res_y)  # resolution of the virtualcamera
+        self.intrinsic = intrinsic_from_params(self.f, self.theta, self.res.x, self.res.y)
 
         self.__coord = None
         self.__target = None
         self.projection = None
-        self.intrinsic = None
         self.extrinsic = None
 
     def __repr__(self):
@@ -86,6 +86,29 @@ class Camera:
             print("Projection cannot be calculated!")
             self.extrinsic = None
             self.projection = None
+
+    def get_images(self, objects, fast=1):
+            nimage = np.size(self.extrinsic, axis=0)
+            image = np.zeros([nimage * self.res.y, self.res.x, 3], dtype=np.uint8)
+            random_picking = np.random.choice(objects.shape[0], int(self.res.x * self.res.y * fast))
+            objects = objects[random_picking, :]
+            objects = np.hstack((objects, np.ones([np.size(objects, axis=0), 1])))
+            pixels = np.matmul(objects, self.projection.transpose(0,2,1))  # (A * B.T).T == B * A.T
+
+            # divide x, y by z
+            pixels[..., 0:2] = (pixels[..., 0:2] / pixels[..., 2].reshape(-1, 1)).astype(np.int32)
+            # remove pixels outside image frame
+            pixels = pixels[(pixels[..., 0] > -1) & (pixels[..., 0] < self.res.x)
+                            & (pixels[..., 1] > -1) & (pixels[..., 1] < self.res.y)]
+
+            # keep only the closest pixels for each pixel coordinate
+            if pixels.size != 0:
+                unique, ind = np.unique(pixels[..., 0:2], axis=0, return_index=True)
+                print(unique, unique.shape)
+                # create image
+                image[1 - np.uint(unique[:, 1]), np.uint(unique[:, 0]), :] = [255, 255, 0]
+
+            return image.reshape(-1, self.res.y, self.res.x, 3)
 
 
 def intrinsic_from_params(f, theta, x, y):
@@ -141,3 +164,29 @@ def extrinsic_from_coord(coord, offset=None):
     translation = -np.matmul(rotation, coord.transpose(0, 2, 1))
 
     return np.hstack((rotation.reshape(-1, 3), translation.reshape(-1, 1))).reshape(-1, 3, 4)
+
+
+def get_image(intrinsic, coord, pointofview, res, objects, fast=1):
+    image = np.zeros([res.y, res.x, 3], dtype=np.uint8)
+    random_picking = np.random.choice(objects.shape[0], int(res.x * res.y * fast))
+    objects = objects[random_picking, :]
+    objects = np.hstack((objects, np.ones([np.size(objects, axis=0), 1])))
+    extrinsic = extrinsic_from_coord(coord, pointofview)
+    projection = intrinsic.dot(extrinsic[0])
+    pixels = objects.dot(projection.T)  # (A * B.T).T == B * A.T
+    # remove pixels outside from the back
+    pixels = pixels[(pixels[:, 2] < 1)]
+
+    # divide x, y by z
+    pixels[:, 0:2] = (pixels[:, 0:2] / pixels[:, 2].reshape(-1, 1)).astype(np.int32)
+    # remove pixels outside image frame
+    pixels = pixels[(pixels[:, 0] > -1) & (pixels[:, 0] < res.x)
+    & (pixels[:, 1] > -1) & (pixels[:, 1] < res.y)]
+
+    # keep only the closest pixels for each pixel coordinate
+    if pixels.size != 0:
+        unique, ind = np.unique(pixels[:, 0:2], axis=0, return_index=True)
+        # create image
+        image[1 - np.uint(unique[:, 1]), np.uint(unique[:, 0]), :] = [255, 255, 0]
+
+    return image
