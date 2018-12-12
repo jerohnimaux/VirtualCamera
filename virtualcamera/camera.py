@@ -166,17 +166,20 @@ def extrinsic_from_coord(coord, offset=None):
     return np.hstack((rotation.reshape(-1, 3), translation.reshape(-1, 1))).reshape(-1, 3, 4)
 
 
-def get_image(intrinsic, coord, pointofview, res, objects, fast=1):
+def get_image(intrinsic, coord, pointofview, res, objects, fast=None):
     image = np.zeros([res.y, res.x, 3], dtype=np.uint8)
-    random_picking = np.random.choice(objects.shape[0], int(res.x * res.y * fast))
-    objects = objects[random_picking, :]
+
+    if fast is not None:
+        random_picking = np.random.choice(objects.shape[0], int(res.x * res.y * fast))
+        objects = objects[random_picking, :]
+
     objects = np.hstack((objects, np.ones([np.size(objects, axis=0), 1])))
     extrinsic = extrinsic_from_coord(coord, pointofview)
     projection = intrinsic.dot(extrinsic[0])
     pixels = objects.dot(projection.T)  # (A * B.T).T == B * A.T
+
     # remove pixels outside from the back
     pixels = pixels[(pixels[:, 2] < 1)]
-
     # divide x, y by z
     pixels[:, 0:2] = (pixels[:, 0:2] / pixels[:, 2].reshape(-1, 1)).astype(np.int32)
     # remove pixels outside image frame
