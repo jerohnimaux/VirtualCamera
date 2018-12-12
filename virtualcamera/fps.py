@@ -3,7 +3,6 @@ import numpy as np
 import pygame
 from pygame.locals import *
 
-
 class FPS:
     def __init__(self, objects, move_step=1, v_angle_step=np.pi / 6, h_angle_step=np.pi / 4, res_x=640, res_y=480,
                  fov=60, fast=1):
@@ -61,8 +60,10 @@ class FPS:
         while self.run:
             for event in pygame.event.get():  # Attente des événements
                 if event.type == KEYDOWN:
-                    getattr(self, self.commands[event.key])()
-
+                    try:
+                        getattr(self, self.commands[event.key])()
+                    except KeyError:
+                        continue
             # Rafraichissement
             self.display()
 
