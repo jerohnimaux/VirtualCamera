@@ -30,13 +30,5 @@ if __name__ == "__main__":
     # #     plt.show()
 
     model = np.load("cathe3D.npy")
-    x_min, x_max = np.min(model[:, 0]), np.max(model[:, 0])
-    y_min, y_max = np.min(model[:, 1]), np.max(model[:, 1])
-    z_min, z_max = np.min(model[:, 2]), np.max(model[:, 2])
-    target = [(x_min + x_max) / 2, (y_min + y_max) / 2, (z_min + z_max) / 2]
-    center = target
-    center[2] = 0   # set center of rotation on the ground level
-    r = 0.5 * max(np.abs([x_max - x_min, y_max - y_min, z_max - z_min]))
-    print("center = ", center)
     game = cm.FPS(model, 10)
     game.start()
