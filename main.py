@@ -30,5 +30,5 @@ if __name__ == "__main__":
     # #     plt.show()
 
     model = np.load("cathe3D.npy")
-    game = cm.FPS(model, 10)
+    game = cm.FPS(model, move_step=10, fast=1.2)
     game.start()

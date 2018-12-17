@@ -4,7 +4,7 @@ import pygame
 from pygame.locals import *
 
 class FPS:
-    def __init__(self, objects, move_step=1, v_angle_step=np.pi / 6, h_angle_step=np.pi / 4, res_x=640, res_y=480,
+    def __init__(self, objects, move_step=1, v_angle_step=np.pi / 12, h_angle_step=np.pi / 12, res_x=640, res_y=480,
                  fov=60, fast=1):
         self.run = True
         self.move_step = move_step
