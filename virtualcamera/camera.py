@@ -2,27 +2,28 @@ import numpy as np
 
 
 class Camera:
-    """ Compute the intrinsic and extrinsic matrix of a virtual virtualcamera with no distortion from parameters.
-    The extrinsic matrix is calculated from the coordinates of the virtualcamera in the world space of reference.
-    trajectory_linear() and trajectory_circle() are methods to generate a list of virtualcamera coordinates and then generate
-    the virtualcamera matrices.
-    Intrinsic and extrinsic matrices are generated on call. Projection matrix is generated each time the coordinates are
-    changed.
+    """ Compute the intrinsic and extrinsic matrix of a virtual camera with no distortion from parameters.
+    The extrinsic matrix is calculated from the coordinates of the camera in the world space of reference.
+    trajectory_linear() and trajectory_circle() are methods to generate a list of camera coordinates and then generate
+    the camera matrices.
+    Projection and Extrinsic matrix are generated each time the coordinates are changed.
 
     Note : projection and extrinsic matrices are organised in a 3-dim numpy array, the first dimension is the list of
-    all projection/extrinsic matrices (for every position of the virtualcamera).
+    all projection/extrinsic matrices (for every position of the camera).
+
+    Note 2 : You cannot change intrinsic parameters. If you want to do so, create another object.
+
 
     Example of use (with default intrinsic parameters):
 
         cam = Camera()
-        cam.trajectory_circle(2,36,36)
+        cam.coord = trajectory_circle(2,36,36)
         projection_matrices = cam.projection
         projection_matrix_for_4th_position = projection_matrices[3]
-
     """
 
     class Res:
-        """ Inner class to describe virtualcamera resolution with x and y parameters"""
+        """ Inner class to describe camera resolution with x and y parameters"""
 
         def __init__(self, x, y):
             self.x = x
@@ -65,7 +66,7 @@ class Camera:
     @target.setter
     def target(self, coord):
         self.__target = np.asarray(coord, dtype=float).reshape(1, 3)
-        if self.__coord is not None:
+        if self.__coord is not None:            # automatically compute projection matrix
             self.__compute_projection()
 
     @property
@@ -75,7 +76,7 @@ class Camera:
     @coord.setter
     def coord(self, coord):
         self.__coord = np.asarray(coord, dtype=float).reshape(-1, 3)
-        self.__compute_projection()
+        self.__compute_projection()             # automatically compute projection matrix
 
     def __compute_projection(self):
         try:
@@ -112,58 +113,81 @@ class Camera:
 
 
 def intrinsic_from_params(f, theta, x, y):
-    """ Generate virtualcamera intrinsic matrix from virtualcamera parameters
+    """ Generate camera intrinsic matrix from camera parameters
     @:param f = focal distance (in mm)
     @:param theta = field of vision (in degrees)
     @:param x, y = x and y number of pixels
-    @:returns virtualcamera intrinsic matrix
+    @:returns camera intrinsic matrix
     """
-    ratio = float(x) / y  # screen ratio
-    theta_x = theta / (2 * 180) * np.pi  # angle in x of a pixel
-    theta_y = theta_x / ratio  # angle in y of a pixel
-    pixel_size_x = np.tan(theta_x) * f / (x / 2)
-    pixel_size_y = np.tan(theta_y) * f / (y / 2)
-    o_x, o_y = float(x / 2), float(y / 2)  # center of the image
+    ratio = float(x) / y                            # screen ratio
+    theta_x = theta / (2 * 180) * np.pi             # horizontal viewing angle (rad)
+    theta_y = theta_x / ratio                       # vertical viewing angle (rad)
+    pixel_size_x = np.tan(theta_x) * f / (x / 2)    # in mm
+    pixel_size_y = np.tan(theta_y) * f / (y / 2)    # in mm
+    o_x, o_y = float(x / 2), float(y / 2)           # center of the image
 
-    return np.asarray([[-f / pixel_size_x, 0, o_x], [0, -f / pixel_size_y, o_y], [0, 0, 1]], dtype=float)
+    return np.asarray([[-f / pixel_size_x, 0, o_x],
+                       [0, -f / pixel_size_y, o_y],
+                       [0, 0, 1]], dtype=float)
 
 
 def rotation_to_target(target):
-    """ Rotation to face target ie to point -z virtualcamera axis to target (or vector of targets),
-    with virtualcamera +y facing upward.
-    @:param target = point to face in virtualcamera reference coordinate (vector of targets or target)
+    """ Rotation to face target ie to point -z camera axis to target (or vector of targets),
+    with camera +y facing upward and camera +x facing right.
+    @:param target = point to face in camera reference coordinate (or vector of points, dim = [k, 3, 1], k = nb of pts)
     @:returns rotation matrix (or vector of rotation matrices).
+    Dimensions are [k,3,3], with k the number of rotation matrices.
     """
     target = np.asarray(target).reshape(-1, 3)
     x, y, z = target[:, 0], target[:, 1], target[:, 2]
     theta_z = np.arctan2(x, y)
     theta_x = np.arctan2(z, np.sqrt(np.power(x, 2) + np.power(y, 2)))
 
-    rz = np.around([[[np.cos(t), -np.sin(t), 0],  # rotation around cam z to align cam y-axis...
-                     [np.sin(t), np.cos(t), 0],  # ... with world z-axis/virtualcamera center plan
+    rz = np.around([[[np.cos(t), -np.sin(t), 0],        # rotation around cam z to align cam y-axis...
+                     [np.sin(t), np.cos(t), 0],         # ... with world target
                      [0, 0, 1]] for t in theta_z], 3)
-    rx = np.around([[[1, 0, 0],  # rotation around virtualcamera x to point cam z-axis...
-                     [0, np.cos(t + np.pi / 2), np.sin(t + np.pi / 2)],  # to world center (target)
+    rx = np.around([[[1, 0, 0],                         # rotation around cam x to point cam (minus) z-axis...
+                     [0, np.cos(t + np.pi / 2), np.sin(t + np.pi / 2)],  # to world target
                      [0, -np.sin(t + np.pi / 2), np.cos(t + np.pi / 2)]] for t in theta_x], 3)
 
     return np.matmul(rx, rz)
 
 
-def extrinsic_from_coord(coord, offset=None):
-    """ Generate the virtualcamera extrinsic matrix from a virtualcamera's world coordinates (or vector of coordinates).
-    @:param coord = virtualcamera coordinates, in world reference (or vector of coordinates)
-    @:param offset = target coordinates the virtualcamera must point at in world reference (or vector of coordinates)
-    @:returns the extrinsic matrix of the virtualcamera
+def extrinsic_from_coord(coord, target=None):
+    """ Generate the camera extrinsic matrix from a camera's world coordinates (or vector of coordinates).
+    @:param coord = camera coordinates, in world reference (or vector of coordinates)
+    @:param offset = target coordinates the camera must point at in world reference (or vector of coordinates)
+    @:returns the extrinsic matrix of the camera
     """
-    if offset is None:
-        offset = [0, 0, 0]
-    offset = np.asarray(offset, dtype=float).reshape(1, 3)
+    if target is None:
+        target = [0, 0, 0]
+    target = np.asarray(target, dtype=float).reshape(1, 3)
     coord = np.asarray(coord).reshape(-1, 1, 3)
 
-    rotation = rotation_to_target(np.add(-coord, offset))
+    rotation = rotation_to_target(np.add(-coord, target))
     translation = -np.matmul(rotation, coord.transpose(0, 2, 1))
 
     return np.hstack((rotation.reshape(-1, 3), translation.reshape(-1, 1))).reshape(-1, 3, 4)
+
+
+def trajectory_linear(start, stop, n_pic, offset=None):
+    if offset is None:
+        offset = [0, 0, 0]
+    start = np.asarray(start, dtype=float)
+    stop = np.asarray(stop, dtype=float)
+    offset = np.asarray(offset, dtype=float)
+    [x, y, z], [x_stop, y_stop, z_stop] = start + offset, stop + offset
+    return np.mgrid[x:x_stop:n_pic * 1j, y:y_stop:n_pic * 1j, z:z_stop:n_pic * 1j].T
+
+
+def trajectory_circle(r, npic_circle, npic, theta0=0, elevation=0, center=None):
+    if center is None:
+        center = [0, 0, 0]
+    center = np.asarray(center, dtype=float).ravel()
+    [x, y, z] = center
+    theta = np.linspace(0, npic * 2 * np.pi / npic_circle, num=npic, endpoint=False)
+    return np.asarray(
+        [r * np.cos(theta + theta0) + x, r * np.sin(theta + theta0) + y, theta / (2 * np.pi) * elevation] + z).T
 
 
 def get_image(intrinsic, coord, pointofview, res, objects, fast=None):
