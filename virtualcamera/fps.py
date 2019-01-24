@@ -6,6 +6,19 @@ from pygame.locals import *
 class FPS:
     def __init__(self, objects, move_step=1, v_angle_step=np.pi / 12, h_angle_step=np.pi / 12, res_x=640, res_y=480,
                  fov=60, fast=1):
+        """ This object uses Pygame functionnality to display images of the view of a 3D object from a virtual camera.
+        The keyboard is used to move the camera in the 3D world, and the images are updated.
+        @:param objects = array of the 3D points of the object in world coordinates
+        @:param move_step = size of 1 step of movement (front, back, strafe left, strafe right)
+        @:param v_angle_step = vertical angle step, the angle (in rad) of which the view is rotated when looking
+        up or down.
+        @:param h_angle_step = the angle (in rad) of which the view is rotated when looking left or right.
+        @:param res_x = horizontal resolution
+        @:param res_y = vertical resolution
+        @:param fov = field of view (in degree)
+        @:param fast = factor to improve performance. Decreases the number of 3D points to take into account.
+                if set to None, then all points are used to generate the image."""
+
         self.run = True
         self.move_step = move_step
         self.v_angle_step = v_angle_step
@@ -48,12 +61,14 @@ class FPS:
         return self.pos + self.orientation
 
     def display(self):
+        """ Update the image"""
         img = get_image(self.view.intrinsic, self.pos, self.target, self.view.res, self.objects, self.fast).transpose(1, 0, 2)
         surface = pygame.surfarray.make_surface(img)
         self.fenetre.blit(surface, (0, 0))
         pygame.display.flip()
 
     def start(self):
+        """Start the game"""
         self.display()
         self.run = True
 
@@ -61,7 +76,7 @@ class FPS:
             for event in pygame.event.get():  # Attente des événements
                 if event.type == KEYDOWN:
                     try:
-                        getattr(self, self.commands[event.key])()
+                        getattr(self, self.commands[event.key])() # Execute la méthode en fonction de la commande clavier
                     except KeyError:
                         continue
             # Rafraichissement
