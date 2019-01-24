@@ -89,27 +89,28 @@ class Camera:
             self.projection = None
 
     def get_images(self, objects, fast=1):
-            nimage = np.size(self.extrinsic, axis=0)
-            image = np.zeros([nimage * self.res.y, self.res.x, 3], dtype=np.uint8)
-            random_picking = np.random.choice(objects.shape[0], int(self.res.x * self.res.y * fast))
-            objects = objects[random_picking, :]
-            objects = np.hstack((objects, np.ones([np.size(objects, axis=0), 1])))
-            pixels = np.matmul(objects, self.projection.transpose(0,2,1))  # (A * B.T).T == B * A.T
+        """Not used"""
+        nimage = np.size(self.extrinsic, axis=0)
+        image = np.zeros([nimage * self.res.y, self.res.x, 3], dtype=np.uint8)
+        random_picking = np.random.choice(objects.shape[0], int(self.res.x * self.res.y * fast))
+        objects = objects[random_picking, :]
+        objects = np.hstack((objects, np.ones([np.size(objects, axis=0), 1])))
+        pixels = np.matmul(objects, self.projection.transpose(0,2,1))  # (A * B.T).T == B * A.T
 
-            # divide x, y by z
-            pixels[..., 0:2] = (pixels[..., 0:2] / pixels[..., 2].reshape(-1, 1)).astype(np.int32)
-            # remove pixels outside image frame
-            pixels = pixels[(pixels[..., 0] > -1) & (pixels[..., 0] < self.res.x)
-                            & (pixels[..., 1] > -1) & (pixels[..., 1] < self.res.y)]
+        # divide x, y by z
+        pixels[..., 0:2] = (pixels[..., 0:2] / pixels[..., 2].reshape(-1, 1)).astype(np.int32)
+        # remove pixels outside image frame
+        pixels = pixels[(pixels[..., 0] > -1) & (pixels[..., 0] < self.res.x)
+                        & (pixels[..., 1] > -1) & (pixels[..., 1] < self.res.y)]
 
-            # keep only the closest pixels for each pixel coordinate
-            if pixels.size != 0:
-                unique, ind = np.unique(pixels[..., 0:2], axis=0, return_index=True)
-                print(unique, unique.shape)
-                # create image
-                image[1 - np.uint(unique[:, 1]), np.uint(unique[:, 0]), :] = [255, 255, 0]
+        # keep only the closest pixels for each pixel coordinate
+        if pixels.size != 0:
+            unique, ind = np.unique(pixels[..., 0:2], axis=0, return_index=True)
+            print(unique, unique.shape)
+            # create image
+            image[1 - np.uint(unique[:, 1]), np.uint(unique[:, 0]), :] = [255, 255, 0]
 
-            return image.reshape(-1, self.res.y, self.res.x, 3)
+        return image.reshape(-1, self.res.y, self.res.x, 3)
 
 
 def intrinsic_from_params(f, theta, x, y):
@@ -170,27 +171,17 @@ def extrinsic_from_coord(coord, target=None):
     return np.hstack((rotation.reshape(-1, 3), translation.reshape(-1, 1))).reshape(-1, 3, 4)
 
 
-def trajectory_linear(start, stop, n_pic, offset=None):
-    if offset is None:
-        offset = [0, 0, 0]
-    start = np.asarray(start, dtype=float)
-    stop = np.asarray(stop, dtype=float)
-    offset = np.asarray(offset, dtype=float)
-    [x, y, z], [x_stop, y_stop, z_stop] = start + offset, stop + offset
-    return np.mgrid[x:x_stop:n_pic * 1j, y:y_stop:n_pic * 1j, z:z_stop:n_pic * 1j].T
-
-
-def trajectory_circle(r, npic_circle, npic, theta0=0, elevation=0, center=None):
-    if center is None:
-        center = [0, 0, 0]
-    center = np.asarray(center, dtype=float).ravel()
-    [x, y, z] = center
-    theta = np.linspace(0, npic * 2 * np.pi / npic_circle, num=npic, endpoint=False)
-    return np.asarray(
-        [r * np.cos(theta + theta0) + x, r * np.sin(theta + theta0) + y, theta / (2 * np.pi) * elevation] + z).T
-
-
 def get_image(intrinsic, coord, pointofview, res, objects, fast=None):
+    """Generate image from camera view
+    @:param intrinsic = camera intrinsic matrix
+    @:param coord = camera coordinates in world coordinates
+    @:param pointofview = coordinates of the point to look at with the camera (in world coordinates)
+    @:param res = camera resolution (Res object)
+    @:param objects = numpy array containing the 3D points of the 3D object to display
+    @:param fast = if set, is a multiplication coefficient to set the number of points to take in account for
+     the image generation. Allow to reduce the number of points to use and therefore increase the performances.
+
+    @:returns a 2D numpy array of the output image."""
     image = np.zeros([res.y, res.x, 3], dtype=np.uint8)
 
     if fast is not None:
